@@ -1,0 +1,152 @@
+---
+title: "Fragile States Index Analysis (2006-2023)"
+output: html_document
+author: Sidhant Sharma
+---
+
+
+## Load Libraries
+
+```{r libraries}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(stringr)
+```
+
+## Load and Append Data
+
+```{r load-data}
+data_files <- list.files(path = "data", pattern = "\\.xlsx$", full.names = TRUE)
+
+read_fsi_file <- function(file_path) {
+  df <- read_excel(file_path)
+  colnames(df) <- gsub(" ", "_", colnames(df))
+  colnames(df) <- gsub("\\.", "_", colnames(df))
+
+  # Convert Year to character to handle different formats (datetime vs numeric)
+  if ("Year" %in% colnames(df)) {
+    df$Year <- as.character(df$Year)
+  }
+  return(df)
+}
+
+all_data <- lapply(data_files, read_fsi_file)
+fsi_combined <- bind_rows(all_data)
+```
+
+## Select Required Columns
+
+```{r select-columns}
+required_cols <- c("Country", "Year", "Rank", "Total",
+                   "C1_Security_Apparatus", "C2_Factionalized_Elites",
+                   "C3_Group_Grievance", "E1_Economy", "E2_Economic_Inequality",
+                   "E3_Human_Flight_and_Brain_Drain", "P1_State_Legitimacy",
+                   "P2_Public_Services", "P3_Human_Rights",
+                   "S1_Demographic_Pressures", "S2_Refugees_and_IDPs",
+                   "X1_External_Intervention")
+
+find_column <- function(df, pattern) {
+  cols <- colnames(df)
+  if (pattern %in% cols) return(pattern)
+  match_idx <- grep(pattern, cols, ignore.case = TRUE)
+  if (length(match_idx) > 0) return(cols[match_idx[1]])
+  pattern_clean <- gsub("_", ".*", pattern)
+  match_idx <- grep(pattern_clean, cols, ignore.case = TRUE)
+  if (length(match_idx) > 0) return(cols[match_idx[1]])
+  return(NA)
+}
+
+col_mapping <- sapply(required_cols, function(x) find_column(fsi_combined, x))
+
+fsi_data <- fsi_combined %>%
+  select(all_of(unname(col_mapping[!is.na(col_mapping)])))
+
+names(fsi_data) <- names(col_mapping[!is.na(col_mapping)])
+```
+
+## Clean and Format Data
+
+```{r clean-data}
+fsi_data <- fsi_data %>%
+  mutate(
+    Rank = as.integer(str_extract(as.character(Rank), "\\d+")),
+    Year = as.integer(Year),
+    Total = as.numeric(Total),
+    C1_Security_Apparatus = as.numeric(C1_Security_Apparatus),
+    C2_Factionalized_Elites = as.numeric(C2_Factionalized_Elites),
+    C3_Group_Grievance = as.numeric(C3_Group_Grievance),
+    E1_Economy = as.numeric(E1_Economy),
+    E2_Economic_Inequality = as.numeric(E2_Economic_Inequality),
+    E3_Human_Flight_and_Brain_Drain = as.numeric(E3_Human_Flight_and_Brain_Drain),
+    P1_State_Legitimacy = as.numeric(P1_State_Legitimacy),
+    P2_Public_Services = as.numeric(P2_Public_Services),
+    P3_Human_Rights = as.numeric(P3_Human_Rights),
+    S1_Demographic_Pressures = as.numeric(S1_Demographic_Pressures),
+    S2_Refugees_and_IDPs = as.numeric(S2_Refugees_and_IDPs),
+    X1_External_Intervention = as.numeric(X1_External_Intervention)
+  )
+
+fsi_data <- fsi_data %>% filter(!is.na(Year))
+
+str(fsi_data)
+head(fsi_data, 10)
+```
+
+## Boxplot: Total Score by Year
+
+```{r boxplot-total, fig.width=12, fig.height=6}
+ggplot(fsi_data, aes(x = factor(Year), y = Total, fill = factor(Year))) +
+  geom_boxplot() +
+  labs(
+    title = "Distribution of Total Fragile States Index Score by Year",
+    subtitle = "Higher scores indicate greater state fragility",
+    x = "Year",
+    y = "Total FSI Score",
+    caption = "Source: Fragile States Index Data (2006-2023)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none"
+  )
+```
+
+## Histograms: Cohesion Indicators (2013 vs 2023)
+
+```{r histogram-facets, fig.width=12, fig.height=8}
+fsi_subset <- fsi_data %>%
+  filter(Year %in% c(2013, 2023)) %>%
+  select(Year, C1_Security_Apparatus, C2_Factionalized_Elites, C3_Group_Grievance) %>%
+  pivot_longer(
+    cols = c(C1_Security_Apparatus, C2_Factionalized_Elites, C3_Group_Grievance),
+    names_to = "Indicator",
+    values_to = "Score"
+  ) %>%
+  mutate(
+    Indicator = case_when(
+      Indicator == "C1_Security_Apparatus" ~ "C1: Security Apparatus",
+      Indicator == "C2_Factionalized_Elites" ~ "C2: Factionalized Elites",
+      Indicator == "C3_Group_Grievance" ~ "C3: Group Grievance"
+    ),
+    Year = factor(Year)
+  )
+
+ggplot(fsi_subset, aes(x = Score, fill = Year)) +
+  geom_histogram(alpha = 0.6, position = "identity", bins = 20) +
+  facet_wrap(~ Indicator, ncol = 1) +
+  labs(
+    title = "Distribution of Cohesion Indicators: 2013 vs 2023",
+    subtitle = "Higher scores indicate greater fragility",
+    x = "Indicator Score",
+    y = "Number of Countries",
+    fill = "Year",
+    caption = "Source: Fragile States Index Data"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(face = "bold"),
+    legend.position = "top"
+  )
+```
