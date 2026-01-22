@@ -1,152 +1,144 @@
 ---
 title: "Fragile States Index Analysis (2006-2023)"
+author: "Sidhant Sharma"
 output: html_document
-author: Sidhant Sharma
 ---
-
 
 ## Load Libraries
 
-```{r libraries}
-library(readxl)
+```{r}
+# Load required packages for data manipulation and visualization
 library(dplyr)
-library(ggplot2)
-library(tidyr)
-library(stringr)
+library(readxl)
+library(tidyverse)
 ```
 
-## Load and Append Data
+## Load Data from Github and Append Data
 
-```{r load-data}
-data_files <- list.files(path = "data", pattern = "\\.xlsx$", full.names = TRUE)
+```{r}
+github_url <- "https://github.com/FundamentalsSid601/FinalHW-Ex1/raw/main/data/"
 
-read_fsi_file <- function(file_path) {
-  df <- read_excel(file_path)
-  colnames(df) <- gsub(" ", "_", colnames(df))
-  colnames(df) <- gsub("\\.", "_", colnames(df))
+# List of all Excel file names to read
+file_names <- c("fsi-2006.xlsx", "fsi-2007.xlsx", "fsi-2008.xlsx", "fsi-2009.xlsx",
+                "fsi-2010.xlsx", "fsi-2011.xlsx", "fsi-2012.xlsx", "fsi-2013.xlsx",
+                "fsi-2014.xlsx", "fsi-2015.xlsx", "fsi-2016.xlsx", "fsi-2017.xlsx",
+                "fsi-2018.xlsx", "fsi-2019.xlsx", "fsi-2020.xlsx", "fsi-2021.xlsx",
+                "fsi-2022-download.xlsx", "FSI-2023-DOWNLOAD.xlsx")
 
-  # Convert Year to character to handle different formats (datetime vs numeric)
-  if ("Year" %in% colnames(df)) {
-    df$Year <- as.character(df$Year)
-  }
+# Loop through each file, download from GitHub, read it, and combine all into one dataframe
+all_data <- map_df(file_names, function(file) {
+  url <- paste0(github_url, file)              # Create full URL
+  temp_file <- tempfile(fileext = ".xlsx")     # Create temporary file
+  download.file(url, temp_file, mode = "wb", quiet = TRUE)  # Download file
+  df <- read_excel(temp_file)                  # Read Excel file into dataframe
+  df <- df %>% mutate(Year = as.numeric(Year)) # Convert Year column to numeric
   return(df)
-}
-
-all_data <- lapply(data_files, read_fsi_file)
-fsi_combined <- bind_rows(all_data)
+})
 ```
 
-## Select Required Columns
+## Inspect Data
 
-```{r select-columns}
-required_cols <- c("Country", "Year", "Rank", "Total",
-                   "C1_Security_Apparatus", "C2_Factionalized_Elites",
-                   "C3_Group_Grievance", "E1_Economy", "E2_Economic_Inequality",
-                   "E3_Human_Flight_and_Brain_Drain", "P1_State_Legitimacy",
-                   "P2_Public_Services", "P3_Human_Rights",
-                   "S1_Demographic_Pressures", "S2_Refugees_and_IDPs",
-                   "X1_External_Intervention")
+```{r}
+# View first 6 rows of data
+head(all_data)
 
-find_column <- function(df, pattern) {
-  cols <- colnames(df)
-  if (pattern %in% cols) return(pattern)
-  match_idx <- grep(pattern, cols, ignore.case = TRUE)
-  if (length(match_idx) > 0) return(cols[match_idx[1]])
-  pattern_clean <- gsub("_", ".*", pattern)
-  match_idx <- grep(pattern_clean, cols, ignore.case = TRUE)
-  if (length(match_idx) > 0) return(cols[match_idx[1]])
-  return(NA)
-}
+# View all column names
+colnames(all_data)
+```
 
-col_mapping <- sapply(required_cols, function(x) find_column(fsi_combined, x))
+## Keep Only Required Data
 
-fsi_data <- fsi_combined %>%
-  select(all_of(unname(col_mapping[!is.na(col_mapping)])))
-
-names(fsi_data) <- names(col_mapping[!is.na(col_mapping)])
+```{r}
+# Select only the 16 required columns and rename them to use underscores instead of colons/spaces
+all_data <- all_data %>% select(Country, Year, Rank, Total,
+                                 "C1: Security Apparatus", "C2: Factionalized Elites",
+                                 "C3: Group Grievance", "E1: Economy",
+                                 "E2: Economic Inequality", "E3: Human Flight and Brain Drain",
+                                 "P1: State Legitimacy", "P2: Public Services",
+                                 "P3: Human Rights", "S1: Demographic Pressures",
+                                 "S2: Refugees and IDPs", "X1: External Intervention") %>%
+  rename(C1_Security_Apparatus = "C1: Security Apparatus",
+         C2_Factionalized_Elites = "C2: Factionalized Elites",
+         C3_Group_Grievance = "C3: Group Grievance",
+         E1_Economy = "E1: Economy",
+         E2_Economic_Inequality = "E2: Economic Inequality",
+         E3_Human_Flight_and_Brain_Drain = "E3: Human Flight and Brain Drain",
+         P1_State_Legitimacy = "P1: State Legitimacy",
+         P2_Public_Services = "P2: Public Services",
+         P3_Human_Rights = "P3: Human Rights",
+         S1_Demographic_Pressures = "S1: Demographic Pressures",
+         S2_Refugees_and_IDPs = "S2: Refugees and IDPs",
+         X1_External_Intervention = "X1: External Intervention")
 ```
 
 ## Clean and Format Data
 
-```{r clean-data}
-fsi_data <- fsi_data %>%
-  mutate(
-    Rank = as.integer(str_extract(as.character(Rank), "\\d+")),
-    Year = as.integer(Year),
-    Total = as.numeric(Total),
-    C1_Security_Apparatus = as.numeric(C1_Security_Apparatus),
-    C2_Factionalized_Elites = as.numeric(C2_Factionalized_Elites),
-    C3_Group_Grievance = as.numeric(C3_Group_Grievance),
-    E1_Economy = as.numeric(E1_Economy),
-    E2_Economic_Inequality = as.numeric(E2_Economic_Inequality),
-    E3_Human_Flight_and_Brain_Drain = as.numeric(E3_Human_Flight_and_Brain_Drain),
-    P1_State_Legitimacy = as.numeric(P1_State_Legitimacy),
-    P2_Public_Services = as.numeric(P2_Public_Services),
-    P3_Human_Rights = as.numeric(P3_Human_Rights),
-    S1_Demographic_Pressures = as.numeric(S1_Demographic_Pressures),
-    S2_Refugees_and_IDPs = as.numeric(S2_Refugees_and_IDPs),
-    X1_External_Intervention = as.numeric(X1_External_Intervention)
-  )
+```{r}
+# Remove non-numeric characters from Rank (e.g., "1st" becomes 1) and convert to number
+all_data <- all_data %>% mutate(Rank = as.numeric(gsub("[^0-9]", "", Rank)))
+```
 
-fsi_data <- fsi_data %>% filter(!is.na(Year))
+```{r}
+# Convert Year to integer
+all_data <- all_data %>% mutate(Year = as.integer(Year))
+```
 
-str(fsi_data)
-head(fsi_data, 10)
+```{r}
+# Convert Year from Unix timestamp to actual year (some files store Year as seconds since 1970)
+all_data <- all_data %>% mutate(Year = lubridate::year(as.POSIXct(Year, origin = "1970-01-01", tz = "UTC")))
+```
+
+```{r}
+# Check unique years to verify conversion
+unique(all_data$Year)
+```
+
+```{r}
+# Fix any 1970 values (these are from 2023 data where Year was stored as 0)
+all_data <- all_data %>% mutate(Year = if_else(Year == 1970, 2023, Year))
+```
+
+```{r}
+# Ensure Year is stored as integer
+all_data <- all_data %>% mutate(Year = as.integer(Year))
+```
+
+```{r}
+# Verify final data structure and values
+head(all_data)
+str(all_data)
+unique(all_data$Year)
 ```
 
 ## Boxplot: Total Score by Year
 
-```{r boxplot-total, fig.width=12, fig.height=6}
-ggplot(fsi_data, aes(x = factor(Year), y = Total, fill = factor(Year))) +
-  geom_boxplot() +
-  labs(
-    title = "Distribution of Total Fragile States Index Score by Year",
-    subtitle = "Higher scores indicate greater state fragility",
-    x = "Year",
-    y = "Total FSI Score",
-    caption = "Source: Fragile States Index Data (2006-2023)"
-  ) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    legend.position = "none"
-  )
+```{r}
+# Create boxplot showing distribution of Total FSI score for each year
+ggplot(all_data, aes(x = factor(Year), y = Total)) +
+  geom_boxplot(fill = "steelblue") +
+  labs(title = "Distribution of Fragile States Index Total Score by Year",
+       subtitle = "Higher scores indicate greater state fragility",
+       x = "Year",
+       y = "Total Score",
+       caption = "Source: Fragile States Index Data (2006-2023)") +
+  theme_minimal()
 ```
 
 ## Histograms: Cohesion Indicators (2013 vs 2023)
 
-```{r histogram-facets, fig.width=12, fig.height=8}
-fsi_subset <- fsi_data %>%
-  filter(Year %in% c(2013, 2023)) %>%
-  select(Year, C1_Security_Apparatus, C2_Factionalized_Elites, C3_Group_Grievance) %>%
-  pivot_longer(
-    cols = c(C1_Security_Apparatus, C2_Factionalized_Elites, C3_Group_Grievance),
-    names_to = "Indicator",
-    values_to = "Score"
-  ) %>%
-  mutate(
-    Indicator = case_when(
-      Indicator == "C1_Security_Apparatus" ~ "C1: Security Apparatus",
-      Indicator == "C2_Factionalized_Elites" ~ "C2: Factionalized Elites",
-      Indicator == "C3_Group_Grievance" ~ "C3: Group Grievance"
-    ),
-    Year = factor(Year)
-  )
-
-ggplot(fsi_subset, aes(x = Score, fill = Year)) +
-  geom_histogram(alpha = 0.6, position = "identity", bins = 20) +
-  facet_wrap(~ Indicator, ncol = 1) +
-  labs(
-    title = "Distribution of Cohesion Indicators: 2013 vs 2023",
-    subtitle = "Higher scores indicate greater fragility",
-    x = "Indicator Score",
-    y = "Number of Countries",
-    fill = "Year",
-    caption = "Source: Fragile States Index Data"
-  ) +
-  theme_minimal() +
-  theme(
-    strip.text = element_text(face = "bold"),
-    legend.position = "top"
-  )
+```{r}
+# Filter for 2013 and 2023, reshape data to long format, and create faceted histograms
+all_data %>% filter(Year %in% c(2013, 2023)) %>%
+  pivot_longer(cols = c(C1_Security_Apparatus, C2_Factionalized_Elites, C3_Group_Grievance),
+               names_to = "Variable", values_to = "Value") %>%
+  ggplot(aes(x = Value, fill = factor(Year))) +
+  geom_histogram(bins = 15, alpha = 0.7, position = "identity") +
+  facet_wrap(~Variable, scales = "free", ncol = 1) +
+  labs(title = "Comparison of Cohesion Indicators: 2013 vs 2023",
+       subtitle = "Higher scores indicate greater fragility",
+       x = "Score",
+       y = "Number of Countries",
+       fill = "Year",
+       caption = "Source: Fragile States Index Data") +
+  theme_minimal()
 ```
